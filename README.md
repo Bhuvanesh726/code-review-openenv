@@ -1,3 +1,14 @@
+---
+title: Code Review OpenEnv
+emoji: 🔍
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+tags:
+  - openenv
+---
+
 # Code Review OpenEnv
 
 A real-world [OpenEnv](https://github.com/openenv) environment where an AI agent reviews code diffs to identify bugs, security vulnerabilities, and logic errors — graded against programmatically seeded known issues.
