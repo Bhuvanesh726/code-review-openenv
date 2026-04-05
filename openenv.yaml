@@ -1,0 +1,100 @@
+name: code-review-openenv
+version: "1.0.0"
+description: >
+  A real-world OpenEnv environment where an AI agent reviews code diffs
+  for bugs, security vulnerabilities, and logic errors. Graded against
+  seeded known issues using precision/recall F1 scoring.
+
+tags:
+  - openenv
+  - code-review
+  - security
+  - software-engineering
+
+author: "Your Name / Team Name"
+license: MIT
+
+environment:
+  class: CodeReviewEnv
+  module: environment
+  reset_endpoint: /reset
+  step_endpoint: /step
+  state_endpoint: /state
+
+action_space:
+  type: object
+  description: >
+    A list of ReviewComment objects identifying issues in the diff,
+    plus a brief overall summary string.
+  fields:
+    comments:
+      type: array
+      items:
+        line: "integer or null — line number of issue"
+        issue_type: "enum: bug | security | style | performance | logic"
+        severity: "enum: low | medium | high | critical"
+        description: "string — description of the issue"
+        suggestion: "string or null — suggested fix"
+    summary:
+      type: string
+      description: "1-3 sentence overall review summary"
+
+observation_space:
+  type: object
+  fields:
+    diff: "string — unified diff of the code being reviewed"
+    filename: "string — name of the file"
+    language: "string — programming language"
+    context: "string — PR context description"
+    step: "integer — current step number"
+    max_steps: "integer — maximum steps per episode"
+    last_feedback: "string or null — feedback from previous step"
+    issues_found_so_far: "integer — count of correctly identified issues"
+    total_issues: "integer — total seeded issues (revealed at end)"
+
+reward:
+  type: float
+  range: [0.0, 1.0]
+  description: >
+    F1 score (harmonic mean of precision and recall) across all review
+    comments, penalized by 0.05 per false positive (max penalty 0.3).
+    Provides partial credit: finding more real issues = higher reward.
+
+tasks:
+  - id: easy_null_pointer
+    difficulty: easy
+    filename: user_service.py
+    language: python
+    num_seeded_issues: 2
+    description: >
+      Review a simple Python service class. Find a None dereference
+      and a hardcoded credential. Suitable for basic code review agents.
+
+  - id: medium_flask_security
+    difficulty: medium
+    filename: auth_routes.py
+    language: python
+    num_seeded_issues: 5
+    description: >
+      Review Flask authentication routes for OWASP Top 10 violations.
+      Includes SQL injection, weak hashing, missing auth, and token leakage.
+
+  - id: hard_async_race
+    difficulty: hard
+    filename: payment_processor.py
+    language: python
+    num_seeded_issues: 4
+    description: >
+      Review async payment processing code. Requires understanding of
+      concurrency (race conditions, TOCTOU), financial precision bugs,
+      and IDOR vulnerabilities. Challenges frontier models.
+
+baseline_scores:
+  easy_null_pointer: ~0.75
+  medium_flask_security: ~0.55
+  hard_async_race: ~0.30
+
+infra:
+  max_runtime_seconds: 1200
+  min_vcpu: 2
+  min_memory_gb: 8
