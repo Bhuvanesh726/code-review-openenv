@@ -1,0 +1,18 @@
+[project]
+name = "code-review-openenv"
+version = "1.0.0"
+description = "A real-world OpenEnv environment for AI code review"
+requires-python = ">=3.11"
+
+[tool.openenv]
+name = "code-review-openenv"
+version = "1.0.0"
+description = "Code review environment where agents identify bugs and security issues in code diffs"
+author = "Bhuvanesh726"
+tags = ["openenv", "code-review", "security"]
+env_class = "CodeReviewEnv"
+env_module = "environment"
+reset_endpoint = "/reset"
+step_endpoint = "/step"
+state_endpoint = "/state"
+tasks = ["easy_null_pointer", "medium_flask_security", "hard_async_race"]
