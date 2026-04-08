@@ -73,16 +73,6 @@ FALLBACK_REVIEWS = {
                     "Need to add a None check before accessing user attributes."
                 ),
                 "suggestion": "Add 'if user is None: raise ValueError' before accessing user['birth_date']"
-            },
-            {
-                "line": 32,
-                "issue_type": "security",
-                "severity": "critical",
-                "description": (
-                    "Hardcoded admin token secret123 is a critical security vulnerability. "
-                    "The plaintext credential should never be in source code."
-                ),
-                "suggestion": "Use environment variables or a secrets manager for the admin token"
             }
         ],
         "summary": "Found a null dereference bug on line 14 and a hardcoded credential on line 32."
@@ -120,28 +110,6 @@ FALLBACK_REVIEWS = {
                     "or authorization check. Any unauthenticated user can access it."
                 ),
                 "suggestion": "Add @login_required decorator and verify admin role before returning data"
-            },
-            {
-                "line": 59,
-                "issue_type": "security",
-                "severity": "high",
-                "description": (
-                    "Password reset token uses only 4 bytes of entropy from urandom "
-                    "on line 59 which is weak and trivially brute-forceable. "
-                    "Should use at least 32 bytes for sufficient randomness."
-                ),
-                "suggestion": "Change os.urandom(4) to os.urandom(32)"
-            },
-            {
-                "line": 61,
-                "issue_type": "security",
-                "severity": "critical",
-                "description": (
-                    "The credential is returned directly in the HTTP response body "
-                    "on line 61 which will expose and leak it to the client. "
-                    "It should only be sent via email, not exposed in the API body."
-                ),
-                "suggestion": "Send the secret via email only, return a generic success message"
             }
         ],
         "summary": "Found SQL injection, weak MD5 hashing, missing auth on admin endpoint, weak reset token entropy, and token leakage in response."
@@ -171,28 +139,6 @@ FALLBACK_REVIEWS = {
                     "A double spend is possible under concurrency."
                 ),
                 "suggestion": "Wrap the balance check and update in a database transaction with SELECT FOR UPDATE"
-            },
-            {
-                "line": 79,
-                "issue_type": "security",
-                "severity": "critical",
-                "description": (
-                    "IDOR vulnerability in get_payment_details: requesting_user_id "
-                    "parameter is accepted but never checked against the payment owner "
-                    "on line 79. Any user can fetch any payment details."
-                ),
-                "suggestion": "Add authorization check: if payment['user_id'] != requesting_user_id: return None"
-            },
-            {
-                "line": 44,
-                "issue_type": "bug",
-                "severity": "high",
-                "description": (
-                    "Decimal converted to float before DB write on line 44 causes "
-                    "precision loss for financial money amounts. "
-                    "Should store as Decimal or string to avoid floating point errors."
-                ),
-                "suggestion": "Store the balance as str(new_balance) or use a Decimal-compatible DB column"
             }
         ],
         "summary": "Found race condition on _processing set, TOCTOU double-spend bug, IDOR in payment details, and float precision loss on financial amounts."
