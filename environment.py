@@ -176,7 +176,8 @@ class CodeReviewEnv:
             f1 = 0.0
 
         fp_penalty = min(self._false_positives * 0.05, 0.3)
-        reward = max(0.0, round(f1 - fp_penalty, 4))
+        raw_reward = round(f1 - fp_penalty, 4)
+        reward = max(0.01, min(0.99, raw_reward))
 
         self._cumulative_reward = reward  # use latest (not cumulative sum) for scoring
 
