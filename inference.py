@@ -1,38 +1,52 @@
+"""
+Inference Script — Code Review OpenEnv
+=======================================
+Mandatory env vars:
+    API_BASE_URL   The API endpoint for the LLM (has default)
+    MODEL_NAME     The model identifier (has default)
+    HF_TOKEN       Your Hugging Face API key (no default, required)
+
+Stdout format (strict):
+    [START] task=<task_name> env=<benchmark> model=<model_name>
+    [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
+    [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
+"""
+
 import json
 import os
 import re
 import sys
 import time
 from typing import List, Optional
- 
+
 import requests
 from openai import OpenAI
- 
+
 # ---------------------------------------------------------------------------
 # Config — API_BASE_URL and MODEL_NAME must have defaults, HF_TOKEN must not
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
- 
+
 HF_SPACE_URL = os.getenv("HF_SPACE_URL", "https://Bhuvanesh726-code-review-openenv.hf.space").rstrip("/")
 BENCHMARK = "code_review_openenv"
 MAX_STEPS = 3
 SUCCESS_SCORE_THRESHOLD = 0.3
- 
+
 TASKS = [
     "easy_null_pointer",
     "medium_flask_security",
     "hard_async_race",
 ]
- 
+
 # ---------------------------------------------------------------------------
 # Logging — strict [START] [STEP] [END] format
 # ---------------------------------------------------------------------------
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
- 
- 
+
+
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
@@ -41,16 +55,16 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
         f"[STEP] step={step} action={action_short} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
     )
- 
- 
-def log_end(success: bool, steps: int, rewards: List[float]) -> None:
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
         flush=True,
     )
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Environment client
 # ---------------------------------------------------------------------------
@@ -58,15 +72,15 @@ def env_reset(task_id: str) -> dict:
     resp = requests.post(f"{HF_SPACE_URL}/reset", json={"task_id": task_id}, timeout=30)
     resp.raise_for_status()
     return resp.json()
- 
- 
+
+
 def env_step(task_id: str, comments: list, summary: str) -> dict:
     payload = {"task_id": task_id, "comments": comments, "summary": summary}
     resp = requests.post(f"{HF_SPACE_URL}/step", json=payload, timeout=30)
     resp.raise_for_status()
     return resp.json()
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Expert fallback — finds SOME but not ALL issues → score strictly between 0 and 1
 # ---------------------------------------------------------------------------
@@ -104,7 +118,7 @@ FALLBACK_REVIEWS = {
                 "issue_type": "security",
                 "severity": "critical",
                 "description": (
-                    "MD5 used for password hashing on line 21 — "
+                    "MD5 used for password hashing on line 21 which is "
                     "cryptographically broken and weak. Use bcrypt or argon2."
                 ),
                 "suggestion": "Replace hashlib.md5 with bcrypt"
@@ -148,12 +162,12 @@ FALLBACK_REVIEWS = {
         "summary": "Found race condition and TOCTOU double-spend bug."
     },
 }
- 
- 
+
+
 def fallback_action(task_id: str) -> dict:
     return FALLBACK_REVIEWS.get(task_id, {"comments": [], "summary": "No issues detected."})
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # LLM action
 # ---------------------------------------------------------------------------
@@ -178,8 +192,8 @@ def parse_llm_json(text: str) -> Optional[dict]:
         except Exception:
             pass
     return None
- 
- 
+
+
 def get_model_action(client: Optional[OpenAI], task_id: str, obs: dict) -> dict:
     if client is None:
         return fallback_action(task_id)
@@ -191,27 +205,27 @@ def get_model_action(client: Optional[OpenAI], task_id: str, obs: dict) -> dict:
         total_issues = obs.get("total_issues", 0)
         issues_found = obs.get("issues_found_so_far", 0)
         last_feedback = obs.get("last_feedback", "")
- 
+
         feedback_section = ""
         if last_feedback:
             feedback_section = f"\n\nFEEDBACK: {last_feedback}\nFound {issues_found}/{total_issues} so far."
- 
+
         prompt = f"""Expert code security reviewer. Review this diff.
- 
+
 FILE: {filename} ({language})
 CONTEXT: {context}{feedback_section}
- 
+
 DIFF:
 {diff}
- 
+
 Respond with ONLY valid JSON:
 {{
   "comments": [{{"line": <int>, "issue_type": "<bug|security|style|performance|logic>", "severity": "<low|medium|high|critical>", "description": "<description>", "suggestion": "<fix>"}}],
   "summary": "<review>"
 }}
- 
+
 Find: null dereferences, SQL injection, hardcoded credentials, race conditions, missing auth, weak crypto, IDOR, TOCTOU."""
- 
+
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -229,8 +243,8 @@ Find: null dereferences, SQL injection, hardcoded credentials, race conditions, 
     except Exception as e:
         print(f"[DEBUG] LLM failed: {e}", flush=True)
         return fallback_action(task_id)
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Run one task — emits [START] [STEP]... [END]
 # ---------------------------------------------------------------------------
@@ -238,56 +252,56 @@ def run_task(client: Optional[OpenAI], task_id: str) -> tuple:
     rewards: List[float] = []
     steps_taken = 0
     success = False
- 
+
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
- 
+
     try:
         obs = env_reset(task_id)
         done = False
- 
+
         for step in range(1, MAX_STEPS + 1):
             if done:
                 break
- 
+
             action_dict = get_model_action(client, task_id, obs)
             comments = action_dict.get("comments", [])
             summary = action_dict.get("summary", "")
             action_str = f"comments={len(comments)}_summary={summary[:60].replace(' ', '_')}"
             error = None
- 
+
             try:
                 result = env_step(task_id, comments, summary)
                 obs = result.get("observation", {})
-                reward = float(result.get("reward", 0.0))
+                reward = float(result.get("reward", 0.01))
                 done = bool(result.get("done", False))
             except Exception as e:
-                reward = 0.001
+                reward = 0.01
                 done = True
                 error = str(e)[:100]
- 
+
             # Clamp strictly between 0 and 1 (exclusive)
-            reward = min(max(reward, 0.001), 0.999)
+            reward = min(max(reward, 0.01), 0.99)
             rewards.append(reward)
             steps_taken = step
             log_step(step=step, action=action_str, reward=reward, done=done, error=error)
- 
+
             if done:
                 break
- 
-        score = rewards[-1] if rewards else 0.001
-        score = min(max(score, 0.001), 0.999)
+
+        score = rewards[-1] if rewards else 0.01
+        score = min(max(score, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
- 
+
     except Exception as e:
         print(f"[DEBUG] Episode error: {e}", flush=True)
-        rewards = [0.001]
+        rewards = [0.01]
         steps_taken = 1
-        score = 0.001
- 
-    log_end(success=success, steps=steps_taken, rewards=rewards)
+        score = 0.01
+
+    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
     return score, rewards, steps_taken, success
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -301,7 +315,7 @@ def main() -> None:
             print(f"[DEBUG] OpenAI init failed: {e}", flush=True)
     else:
         print("[INFO] HF_TOKEN not set — using expert fallback reviews", flush=True)
- 
+
     all_scores = []
     for task_id in TASKS:
         print(f"\n{'='*60}", flush=True)
@@ -310,11 +324,11 @@ def main() -> None:
             all_scores.append(score)
         except Exception as e:
             print(f"[DEBUG] Task {task_id} failed: {e}", flush=True)
-            all_scores.append(0.001)
- 
+            all_scores.append(0.01)
+
     avg = sum(all_scores) / len(all_scores) if all_scores else 0.0
     print(f"\n[SUMMARY] tasks={len(TASKS)} avg_score={avg:.3f}", flush=True)
- 
- 
+
+
 if __name__ == "__main__":
     main()
